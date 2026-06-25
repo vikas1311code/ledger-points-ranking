@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ledger — Points &amp; Ranking</title>
+<style>
+  :root{
+    --bg: #0f1310;
+    --panel: #161c17;
+    --line: #2a342b;
+    --ink: #e9efe6;
+    --ink-dim: #93a191;
+    --accent: #d4ff5c;
+    --accent-dim: #6f7a4a;
+    --bad: #ff6b5e;
+    --mono: "IBM Plex Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --serif: "Source Serif 4", Georgia, serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--mono);
+    font-size:14px;
+    line-height:1.5;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:32px 20px 80px;}
+  header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:28px;flex-wrap:wrap;gap:12px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:28px;letter-spacing:-0.01em;margin:0;}
+  .tag{color:var(--accent);font-size:11px;letter-spacing:.12em;text-transform:uppercase;}
+  .api-row{display:flex;gap:8px;align-items:center;}
+  .api-row input{
+    background:var(--panel);border:1px solid var(--line);color:var(--ink-dim);
+    font-family:var(--mono);font-size:12px;padding:6px 8px;border-radius:4px;width:240px;
+  }
+  .api-row button.linkbtn{background:none;border:1px solid var(--line);color:var(--ink-dim);font-size:11px;padding:6px 10px;border-radius:4px;cursor:pointer;}
+
+  section{margin-bottom:36px;}
+  .section-label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-dim);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+  .section-label::after{content:"";flex:1;height:1px;background:var(--line);}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:20px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media (max-width:720px){.grid2{grid-template-columns:1fr;}}
+
+  label{display:block;font-size:11px;color:var(--ink-dim);margin-bottom:4px;margin-top:12px;}
+  label:first-child{margin-top:0;}
+  input,select{
+    width:100%;background:#0c100d;border:1px solid var(--line);color:var(--ink);
+    font-family:var(--mono);font-size:13px;padding:9px 10px;border-radius:5px;
+  }
+  input:focus,select:focus{outline:none;border-color:var(--accent-dim);}
+
+  button.primary{
+    margin-top:16px;width:100%;background:var(--accent);color:#0f1310;border:none;
+    font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:.04em;
+    padding:11px 0;border-radius:5px;cursor:pointer;text-transform:uppercase;
+  }
+  button.primary:hover{background:#e3ff8a;}
+  button.primary:disabled{opacity:.5;cursor:default;}
+  button.ghost{
+    background:none;border:1px solid var(--line);color:var(--ink-dim);
+    font-family:var(--mono);font-size:12px;padding:8px 14px;border-radius:5px;cursor:pointer;
+  }
+  button.ghost:hover{color:var(--ink);border-color:var(--ink-dim);}
+
+  .result{
+    margin-top:14px;border-radius:5px;padding:12px 14px;font-size:12px;white-space:pre-wrap;
+    border:1px solid var(--line);background:#0c100d;color:var(--ink-dim);max-height:220px;overflow:auto;
+  }
+  .result.ok{border-color:#3a4a30;color:#c7e89a;}
+  .result.err{border-color:#4a302f;color:#ffb3a8;}
+
+  table{width:100%;border-collapse:collapse;}
+  th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);font-size:13px;}
+  th{color:var(--ink-dim);font-weight:400;font-size:11px;letter-spacing:.06em;text-transform:uppercase;}
+  tr:last-child td{border-bottom:none;}
+  .rank-num{font-family:var(--serif);font-size:18px;color:var(--accent);width:36px;}
+  .rank-1 .rank-num{color:var(--accent);}
+  td.user{font-weight:600;}
+  td.score{color:var(--accent-dim);}
+  .empty{color:var(--ink-dim);font-style:italic;padding:20px 0;text-align:center;}
+
+  .summary-card{display:none;}
+  .summary-card.show{display:block;}
+  .stat-row{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;}
+  .stat{flex:1;min-width:110px;background:#0c100d;border:1px solid var(--line);border-radius:6px;padding:12px;}
+  .stat .v{font-family:var(--serif);font-size:24px;color:var(--accent);}
+  .stat .k{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim);margin-top:2px;}
+
+  footer{color:var(--ink-dim);font-size:11px;border-top:1px solid var(--line);padding-top:16px;margin-top:8px;}
+  a{color:var(--accent-dim);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <div class="tag">Demo client</div>
+      <h1>Ledger</h1>
+    </div>
+    <div class="api-row">
+      <input id="apiBase" value="http://localhost:5000" />
+      <button class="linkbtn" onclick="saveApiBase()">Save URL</button>
+    </div>
+  </header>
+
+  <section>
+    <div class="section-label">Record a transaction</div>
+    <div class="panel">
+      <div class="grid2">
+        <div>
+          <label>User ID</label>
+          <input id="tx-user" placeholder="e.g. alice" />
+          <label>Type</label>
+          <select id="tx-type">
+            <option value="earn">earn</option>
+            <option value="bonus">bonus</option>
+            <option value="purchase">purchase (spends points)</option>
+            <option value="adjustment">adjustment</option>
+          </select>
+          <label>Points</label>
+          <input id="tx-points" type="number" placeholder="e.g. 50" />
+        </div>
+        <div>
+          <label>Idempotency key <span style="color:var(--ink-dim)">(unique per attempt — reuse to test duplicate handling)</span></label>
+          <input id="tx-key" />
+          <button class="ghost" style="margin-top:8px;width:100%;" onclick="newKey()">Generate new key</button>
+          <button class="primary" id="submitBtn" onclick="submitTransaction()">Submit transaction</button>
+        </div>
+      </div>
+      <div id="tx-result" class="result" style="display:none;"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">Look up a user</div>
+    <div class="panel">
+      <div style="display:flex;gap:10px;">
+        <input id="summary-user" placeholder="user id" />
+        <button class="ghost" onclick="loadSummary()">Fetch summary</button>
+      </div>
+      <div id="summary-card" class="summary-card">
+        <div class="stat-row">
+          <div class="stat"><div class="v" id="s-points">—</div><div class="k">total points</div></div>
+          <div class="stat"><div class="v" id="s-rank">—</div><div class="k">rank</div></div>
+          <div class="stat"><div class="v" id="s-score">—</div><div class="k">score</div></div>
+          <div class="stat"><div class="v" id="s-days">—</div><div class="k">active days</div></div>
+        </div>
+        <div id="summary-tx" class="result" style="display:block;margin-top:16px;"></div>
+      </div>
+      <div id="summary-error" class="result err" style="display:none;"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">Leaderboard</div>
+    <div class="panel">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+        <button class="ghost" onclick="loadRanking()">Refresh</button>
+      </div>
+      <table id="rank-table">
+        <thead><tr><th></th><th>User</th><th>Points</th><th>Active days</th><th>Score</th></tr></thead>
+        <tbody id="rank-body"><tr><td colspan="5" class="empty">No data yet — submit a transaction above.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    Score = total_points + (active_days_count × 25). Ranking rewards steady engagement, not just one large transaction.
+    Backend must be running and reachable at the URL above (CORS-enabled Flask API).
+  </footer>
+</div>
+
+<script>
+function apiBase(){ return (document.getElementById('apiBase').value || '').replace(/\/$/, ''); }
+function saveApiBase(){ localStorage.setItem('apiBase', apiBase()); loadRanking(); }
+window.onload = () => {
+  const saved = localStorage.getItem('apiBase');
+  if(saved) document.getElementById('apiBase').value = saved;
+  newKey();
+  loadRanking();
+};
+
+function newKey(){
+  const k = 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2,9);
+  document.getElementById('tx-key').value = k;
+}
+
+async function submitTransaction(){
+  const btn = document.getElementById('submitBtn');
+  const out = document.getElementById('tx-result');
+  out.style.display = 'block';
+  out.className = 'result';
+  out.textContent = 'Sending…';
+  btn.disabled = true;
+
+  const body = {
+    user_id: document.getElementById('tx-user').value.trim(),
+    type: document.getElementById('tx-type').value,
+    points: Number(document.getElementById('tx-points').value),
+    idempotency_key: document.getElementById('tx-key').value.trim(),
+  };
+
+  try{
+    const res = await fetch(apiBase() + '/transaction', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    out.textContent = JSON.stringify(data, null, 2);
+    out.className = 'result ' + (res.ok ? 'ok' : 'err');
+    if(res.ok){
+      loadRanking();
+      if(document.getElementById('summary-user').value.trim() === body.user_id){
+        loadSummary();
+      }
+    }
+  }catch(e){
+    out.textContent = 'Request failed: ' + e.message + '\n\nIs the backend running and is the API URL correct/CORS-enabled?';
+    out.className = 'result err';
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+async function loadSummary(){
+  const user = document.getElementById('summary-user').value.trim();
+  const card = document.getElementById('summary-card');
+  const errBox = document.getElementById('summary-error');
+  errBox.style.display = 'none';
+  if(!user) return;
+  try{
+    const res = await fetch(apiBase() + '/summary/' + encodeURIComponent(user));
+    const data = await res.json();
+    if(!res.ok){
+      card.classList.remove('show');
+      errBox.style.display='block';
+      errBox.textContent = data.error || 'Not found';
+      return;
+    }
+    card.classList.add('show');
+    document.getElementById('s-points').textContent = data.total_points;
+    document.getElementById('s-rank').textContent = '#' + data.rank;
+    document.getElementById('s-score').textContent = data.score;
+    document.getElementById('s-days').textContent = data.active_days_count;
+    document.getElementById('summary-tx').textContent =
+      'Recent transactions:\n' + JSON.stringify(data.recent_transactions, null, 2);
+  }catch(e){
+    card.classList.remove('show');
+    errBox.style.display='block';
+    errBox.textContent = 'Request failed: ' + e.message;
+  }
+}
+
+async function loadRanking(){
+  const body = document.getElementById('rank-body');
+  try{
+    const res = await fetch(apiBase() + '/ranking');
+    const data = await res.json();
+    if(!res.ok || !data.ranking || data.ranking.length === 0){
+      body.innerHTML = '<tr><td colspan="5" class="empty">No data yet — submit a transaction above.</td></tr>';
+      return;
+    }
+    body.innerHTML = data.ranking.map(u => `
+      <tr class="${u.rank===1?'rank-1':''}">
+        <td class="rank-num">${u.rank}</td>
+        <td class="user">${u.user_id}</td>
+        <td>${u.total_points}</td>
+        <td>${u.active_days_count}</td>
+        <td class="score">${u.score}</td>
+      </tr>
+    `).join('');
+  }catch(e){
+    body.innerHTML = `<tr><td colspan="5" class="empty">Could not reach backend at ${apiBase()}</td></tr>`;
+  }
+}
+</script>
+</body>
+</html>

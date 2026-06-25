@@ -1,0 +1,11 @@
+# Windows "downloaded from internet" marker files — block at any depth
+*:Zone.Identifier
+**/*:Zone.Identifier
+
+# General Node/Python hygiene (add if not already present)
+node_modules/
+__pycache__/
+*.pyc
+.env
+*.log
+.DS_Store
