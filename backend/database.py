@@ -28,7 +28,7 @@ import sqlite3
 import os
 import threading
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "app.db")
+DB_PATH = os.environ.get("DB_PATH", "/tmp/app.db")
 
 # A per-user lock map. SQLite already serializes writers at the file level,
 # but we additionally take an in-process lock keyed by user_id so that
