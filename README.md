@@ -4,6 +4,11 @@ A small backend service (Python/Flask + SQLite) that records point-earning
 transactions for users and exposes a fair, multi-factor leaderboard, plus a
 single-page frontend to exercise it live.
 
+**Live demo:** `https://ledger-points-ranking.vercel.app` (frontend) →
+talks to the backend deployed on Render.
+
+---
+
 ## 1. How to run it
 
 ### Backend
@@ -15,8 +20,11 @@ pip install -r requirements.txt
 python app.py
 ```
 
-This starts the API on `http://localhost:5000` and creates `backend/app.db`
-(SQLite file) on first run — no external database needed.
+This starts the API on `http://localhost:5000` and creates a SQLite file at
+`/tmp/app.db` (configurable via the `DB_PATH` env var) on first run — no
+external database needed. The schema is created automatically on import, so
+it works the same way whether you run it directly with `python app.py` or
+through a production server like gunicorn (`gunicorn app:app`).
 
 Health check: `GET http://localhost:5000/health`
 
@@ -24,19 +32,20 @@ Health check: `GET http://localhost:5000/health`
 
 `frontend/index.html` is a single static file with no build step.
 
-- **Locally:** just open the file in a browser, or serve it:
+- **Locally:** open the file directly in a browser, or serve it:
   `python3 -m http.server 8080` from inside `frontend/`, then visit
   `http://localhost:8080`.
-- **Deployed:** the file can be dropped onto any static host (GitHub Pages,
-  Netlify, Vercel static, S3, etc.) since it has no server dependency. The
+- **Deployed:** the file can be dropped onto any static host (Vercel,
+  Netlify, GitHub Pages, S3, etc.) since it has no server dependency. The
   page has an "API URL" field at the top — point it at wherever the backend
-  is deployed (e.g. Render/Railway/Fly.io URL) and click **Save URL**. CORS
-  is already enabled on the backend (`flask-cors`) for this reason.
+  is deployed and click **Save URL** (it's saved in `localStorage` for next
+  time). CORS is already enabled on the backend (`flask-cors`) for this
+  reason.
 
 > **Assumption documented:** since this is a take-home assignment, the
 > backend is meant to be run by the reviewer locally or on a small free-tier
-> host. The frontend is a static file with zero build tooling so it can be
-> deployed to literally any static file host in seconds and pointed at
+> host (Render). The frontend is a static file with zero build tooling so it
+> can be deployed to any static file host in seconds and pointed at
 > whichever backend URL the reviewer chooses.
 
 ---
@@ -64,8 +73,11 @@ Records one transaction (points earned, spent, or adjusted) for a user.
 - `points` — required, whole number, `1`–`1000` per request (this cap is an
   abuse-prevention control, see §4).
 - `idempotency_key` — required, unique string the **client** generates (e.g.
-  a UUID) for this specific attempt. Re-sending the same key (network retry,
-  double-click, etc.) is detected and ignored — see §5.
+  a UUID, or `tx_<timestamp>_<random>` like the frontend does) for this
+  specific attempt. Re-sending the same key (network retry, double-click,
+  etc.) is detected and ignored — see §5. The frontend auto-generates a
+  fresh key after every completed submit, so a key never gets accidentally
+  reused across two logically different transactions.
 
 **Responses:**
 - `201` — transaction applied. Body includes the stored transaction row and
@@ -131,7 +143,7 @@ score = total_points  +  (active_days_count × 25)
   the user made at least one transaction. This is the "consistency" factor:
   a user who shows up regularly accumulates this even on days they earn
   modest amounts, and it can't be inflated by spamming many transactions in
-  a single day (it only increments once per day, see §4).
+  a single day (it only increments once per day — see §4).
 
 Ties on score are broken deterministically (more active days first, then
 `user_id` alphabetically) so the leaderboard never "jitters" between two
@@ -192,6 +204,13 @@ This was verified directly: firing 10 concurrent identical requests (same
 result and nine `duplicate_ignored` results, and the user's final balance
 reflects the transaction exactly once.
 
+> **Note:** an idempotency key is tied to one specific attempt, not one
+> user — if you change the type/points but keep an old key from an earlier
+> attempt, the server correctly treats it as a retry of that *earlier*
+> request and returns its original result rather than processing the new
+> values. The frontend avoids this trap by rotating the key automatically
+> after every submit.
+
 ---
 
 ## 6. Concurrency / data consistency
@@ -215,6 +234,11 @@ reflects the transaction exactly once.
   recomputable from `transactions` if it ever needed to be rebuilt, since
   every mutation to it happens in the same DB transaction as the ledger
   insert that caused it.
+- **Limitation:** the in-process lock only synchronizes requests within a
+  *single* worker process. The deployed app runs gunicorn with 1 worker, so
+  this holds in practice; scaling to multiple worker processes would need a
+  distributed lock (e.g. Redis) or relying purely on SQLite/Postgres-level
+  transactional guarantees instead of the in-process lock.
 
 ---
 
@@ -266,16 +290,42 @@ maintained incrementally as a cache for fast reads.
 - Rate limit and daily cap values (`20`/min, `5000`/day) and the per-transaction
   cap (`1000`) are illustrative defaults, defined as constants at the top of
   `app.py`, intended to be tuned to real product requirements.
+- SQLite (file-based) is used instead of Postgres/MySQL to keep the
+  assignment runnable with zero external dependencies. The schema and data
+  flow are designed so migrating to Postgres later would only require
+  swapping `database.py`'s connection layer — the SQL itself is portable.
 
 ---
 
-## 9. Project structure
+## 9. Known limitations / trade-offs
+
+- **Single-process concurrency model.** The per-user in-process lock
+  assumes one worker process (current `Procfile` uses `--workers 1`).
+  Horizontal scaling to multiple workers/instances would need a shared
+  lock (Redis) instead of an in-memory dict.
+- **No authentication.** Any client can post transactions for any
+  `user_id`. Fine for a demo/assignment; not production-safe as-is.
+- **SQLite at scale.** Great for this assignment's traffic; a high-write
+  production system would move to Postgres for true multi-writer
+  concurrency instead of relying on SQLite's WAL + busy_timeout.
+- **Idempotency key is attempt-scoped, not request-content-scoped.** The
+  server doesn't check that the payload matches the original request for a
+  reused key — it just returns the original result. This is the standard
+  idempotency-key contract (the client owns the 1:1 mapping between key and
+  attempt), but it means a key reused with *different* field values will
+  silently return the old result instead of erroring. The frontend
+  mitigates this by auto-rotating the key after every submit.
+
+---
+
+## 10. Project structure
 
 ```
 backend/
   app.py            # Flask app: routes, validation, business logic
   database.py       # SQLite connection + schema + per-user lock helper
   requirements.txt
+  Procfile           # gunicorn entrypoint for deployment
 frontend/
   index.html        # single-file static frontend (no build step)
 README.md
