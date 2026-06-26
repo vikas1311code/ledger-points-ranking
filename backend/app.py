@@ -22,6 +22,14 @@ from database import init_db, get_connection, get_user_lock
 app = Flask(__name__)
 CORS(app)  # allow the static frontend (served from a different origin) to call this API
 
+# Must run on import, not just under `if __name__ == "__main__"`, because in
+# production the app is started via gunicorn ("gunicorn app:app"), which
+# imports this module and never executes the __main__ block at the bottom.
+# Without this, the SQLite file gets created on first connection but the
+# schema (transactions/users/user_active_days tables) never does, causing
+# "no such table: transactions" on every request.
+init_db()
+
 # ---------------------------------------------------------------------------
 # Configuration / abuse-prevention constants
 # ---------------------------------------------------------------------------
@@ -389,5 +397,4 @@ def method_not_allowed(e):
 
 
 if __name__ == "__main__":
-    init_db()
     app.run(host="0.0.0.0", port=5000, debug=True)
